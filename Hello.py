@@ -1,51 +1,44 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import streamlit as st
-from streamlit.logger import get_logger
+import joblib
+import re
+from nltk.tokenize import word_tokenize
+from farasa.stemmer import FarasaStemmer
 
-LOGGER = get_logger(__name__)
+# Load the TF-IDF vectorizer and the trained model
+with open('tfidf_vectorizer.joblib', 'rb') as file:
+    tfidf_vectorizer = joblib.load(file)
 
+with open('random_forest_model.joblib', 'rb') as file:
+    model = joblib.load(file)
 
-def run():
-    st.set_page_config(
-        page_title="Hello",
-        page_icon="👋",
-    )
+# Arabic text processing
+def preprocess_arabic_text(text):
+    text = re.sub(r'[^ء-ي\s]', '', text)
+    words = word_tokenize(text)
+    words = [re.sub(r'[\u064B-\u0652]', '', word) for word in words]
+    stop_words = set(nltk.corpus.stopwords.words('arabic'))
+    words = [word for word in words if word not in stop_words]
+    stemmer = FarasaStemmer(interactive=True)
+    words = [stemmer.stem(word) for word in words]
+    processed_text = ' '.join(words)
+    return processed_text
 
-    st.write("# Welcome to Streamlit! 👋")
+# Streamlit UI
+st.title('Fatwa Author Attribution Chatbot')
 
-    st.sidebar.success("Select a demo above.")
+user_input = st.text_input('Enter your fatwa:')
+if st.button('Predict Author'):
+    if user_input:
+        # Preprocess user input
+        processed_input = preprocess_arabic_text(user_input)
 
-    st.markdown(
-        """
-        Streamlit is an open-source app framework built specifically for
-        Machine Learning and Data Science projects.
-        **👈 Select a demo from the sidebar** to see some examples
-        of what Streamlit can do!
-        ### Want to learn more?
-        - Check out [streamlit.io](https://streamlit.io)
-        - Jump into our [documentation](https://docs.streamlit.io)
-        - Ask a question in our [community
-          forums](https://discuss.streamlit.io)
-        ### See more complex demos
-        - Use a neural net to [analyze the Udacity Self-driving Car Image
-          Dataset](https://github.com/streamlit/demo-self-driving)
-        - Explore a [New York City rideshare dataset](https://github.com/streamlit/demo-uber-nyc-pickups)
-    """
-    )
+        # Vectorize the input using the loaded TF-IDF vectorizer
+        input_tfidf = tfidf_vectorizer.transform([processed_input])
 
+        # Make predictions using the loaded model
+        prediction = model.predict(input_tfidf)
 
-if __name__ == "__main__":
-    run()
+        st.success(f'The predicted author for the fatwa is: {prediction[0]}')
+    else:
+        st.warning('Please enter a fatwa.')
